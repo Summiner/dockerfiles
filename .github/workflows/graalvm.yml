@@ -1,4 +1,4 @@
-name: build java
+name: graalvm
 on:
   workflow_dispatch:
   schedule:
