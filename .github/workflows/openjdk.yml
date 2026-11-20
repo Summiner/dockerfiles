@@ -1,0 +1,73 @@
+name: openjdk
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0/6 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - openjdk/**
+
+env:
+  IMAGE: ghcr.io/summiner/openjdk
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: [25, 21, 17, 11]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+          - tag: 17
+            builder: "3.21"
+          - tag: 11
+            builder: "3.21"
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GHCR_PAT }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./openjdk
+          platforms: linux/${{ matrix.arch }}
+          provenance: false
+          push: true
+          tags: ${{ env.IMAGE }}:${{ matrix.tag }}-${{ matrix.arch }}
+          build-args: |
+            MAJOR_VERSION=${{ matrix.tag }}
+            BUILDER_ALPINE=${{ matrix.builder || '3.24' }}
+
+  manifest:
+    needs: build
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        tag: [25, 21, 17, 11]
+
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GHCR_PAT }}
+
+      - run: |
+          docker buildx imagetools create \
+            -t ${{ env.IMAGE }}:${{ matrix.tag }} \
+            ${{ env.IMAGE }}:${{ matrix.tag }}-amd64 \
+            ${{ env.IMAGE }}:${{ matrix.tag }}-arm64
